@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatBot - Ruki Restaurant</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="main-layout">
+    
+    <!-- Test Credentials Display Panel -->
+    <div class="glass-panel credentials-card">
+      <h3>Test Credentials</h3>
+      <p class="credentials-desc">Use these credentials to sign in and test persistent order histories.</p>
+      
+      <div class="credential-item">
+        <span class="credential-label">Email</span>
+        <div class="credential-value-wrapper">
+          <code id="admin-email">admin@example.com</code>
+          <button class="copy-btn" onclick="copyText('admin-email', this)">Copy</button>
+        </div>
+      </div>
+
+      <div class="credential-item">
+        <span class="credential-label">Password</span>
+        <div class="credential-value-wrapper">
+          <code id="admin-pass">admin123</code>
+          <button class="copy-btn" onclick="copyText('admin-pass', this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Chat Window -->
+    <div class="chat-container glass-panel">
+    
+    <!-- Chat Header -->
+    <div class="chat-header">
+      <div class="bot-info">
+        <div class="bot-avatar">R</div>
+        <div class="bot-status-container">
+          <span class="bot-name">RukiBot</span>
+          <span class="bot-status">Online</span>
+        </div>
+      </div>
+
+      <div class="user-actions">
+        <% if (user) { %>
+          <span class="user-email">Logged in: <%= user.email %></span>
+          <a href="/logout" class="btn-secondary btn-header">Logout</a>
+        <% } else { %>
+          <a href="/login" class="btn-secondary btn-header">Sign In</a>
+          <a href="/signup" class="btn-primary btn-header">Sign Up</a>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Chat Messages Window -->
+    <div class="chat-messages" id="chat-messages">
+      
+      <!-- Welcome Bot Message -->
+      <div class="message message-bot">
+        <div class="message-content"><b>Ruki Restaurant ChatBot</b>
+Welcome! Please choose an option by typing the number or clicking below:
+
+Select <b>1</b> to Place an order
+Select <b>97</b> to see current order
+Select <b>98</b> to see order history
+Select <b>99</b> to checkout order
+Select <b>0</b> to cancel order</div>
+        <div class="message-time">Just now</div>
+        
+        <!-- Welcome Quick Options Grid -->
+        <div class="select-grid">
+          <button class="select-btn" onclick="sendQuickMessage('1')">1 - Place Order</button>
+          <button class="select-btn" onclick="sendQuickMessage('97')">97 - Current Cart</button>
+          <button class="select-btn" onclick="sendQuickMessage('98')">98 - History</button>
+          <button class="select-btn" onclick="sendQuickMessage('99')">99 - Checkout</button>
+          <button class="select-btn" onclick="sendQuickMessage('0')">0 - Cancel</button>
+        </div>
+      </div>
+
+      <!-- Payment Alerts (Loaded via Query Parameters) -->
+      <% if (paymentStatus === 'success') { %>
+        <div class="message message-bot">
+          <div class="message-content" style="background: rgba(16, 185, 129, 0.1); border-color: var(--accent-green);"><b>Payment Successful!</b>
+Your order has been placed successfully. 
+Reference: <code><%= paymentRef %></code>
+
+Thank you for choosing Ruki Restaurant! Your food is now being prepared.
+Select <b>1</b> to start a new order or select <b>98</b> to see order history.</div>
+          <div class="message-time">Just now</div>
+          <div class="select-grid">
+            <button class="select-btn" onclick="sendQuickMessage('1')">1 - Place Order</button>
+            <button class="select-btn" onclick="sendQuickMessage('98')">98 - View History</button>
+          </div>
+        </div>
+      <% } else if (paymentStatus === 'failed') { %>
+        <div class="message message-bot">
+          <div class="message-content" style="background: rgba(239, 68, 68, 0.1); border-color: var(--accent-red);"><b>Payment Verification Failed</b>
+We could not verify your payment. Please try checking out again or contact customer service.
+
+Select <b>97</b> to see your current cart, or select <b>1</b> to place a new order.</div>
+          <div class="message-time">Just now</div>
+          <div class="select-grid">
+            <button class="select-btn" onclick="sendQuickMessage('97')">97 - Current Cart</button>
+            <button class="select-btn" onclick="sendQuickMessage('1')">1 - Place Order</button>
+          </div>
+        </div>
+      <% } %>
+
+    </div>
+
+    <!-- Typing Indicator -->
+    <div id="typing-indicator" style="display: none; padding: 10px 24px; color: var(--text-secondary); font-size: 0.85rem; font-style: italic;">
+      RukiBot is thinking...
+    </div>
+
+    <!-- Chat Form Input Area -->
+    <div class="chat-input-area">
+      <form id="chat-form" class="chat-form" onsubmit="handleChatSubmit(event)" novalidate>
+        <input 
+          type="text" 
+          id="chat-input" 
+          class="form-control chat-input" 
+          placeholder="Type a number code..." 
+          autocomplete="off"
+          required
+        >
+        <button type="submit" class="btn-primary btn-send">Send</button>
+      </form>
+    </div>
+
+  </div>
+
+  </div> <!-- Close main-layout -->
+
+  <script>
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+    const typingIndicator = document.getElementById('typing-indicator');
+
+    // Auto-scroll to bottom of chat
+    function scrollToBottom() {
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Initialize scrolling
+    scrollToBottom();
+
+    // Send numeric message via Quick Selection Buttons
+    function sendQuickMessage(text) {
+      chatInput.value = text;
+      submitMessage(text);
+    }
+
+    // Submit form handler
+    function handleChatSubmit(event) {
+      event.preventDefault();
+      const text = chatInput.value.trim();
+      if (!text) return;
+      submitMessage(text);
+    }
+
+    // AJAX post message to server
+    async function submitMessage(messageText) {
+      chatInput.value = '';
+      
+      // 1. Append User Message
+      appendMessage(messageText, 'user');
+      scrollToBottom();
+
+      // 2. Show Typing Indicator
+      typingIndicator.style.display = 'block';
+      scrollToBottom();
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ message: messageText })
+        });
+
+        const data = await response.json();
+        
+        // Hide indicator
+        typingIndicator.style.display = 'none';
+
+        if (data.success) {
+          // 3. Append Bot Message
+          appendMessage(data.text, 'bot', data.showPaymentBtn, data.paymentUrl);
+        } else {
+          appendMessage(`${data.message || 'Error occurred.'}`, 'bot');
+        }
+      } catch (err) {
+        typingIndicator.style.display = 'none';
+        appendMessage('Connection lost. Please check your server and try again.', 'bot');
+      }
+
+      scrollToBottom();
+    }
+
+    // Build and append message bubble to UI
+    function appendMessage(text, sender, showPaymentBtn = false, paymentUrl = null) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `message message-${sender}`;
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'message-content';
+      contentDiv.innerHTML = formatMarkdown(text);
+      msgDiv.appendChild(contentDiv);
+
+      const timeDiv = document.createElement('div');
+      timeDiv.className = 'message-time';
+      const now = new Date();
+      timeDiv.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      msgDiv.appendChild(timeDiv);
+
+      // If bot response requires a Paystack payment action, show checkout card
+      if (sender === 'bot' && showPaymentBtn && paymentUrl) {
+        const payCard = document.createElement('div');
+        payCard.className = 'payment-card';
+        
+        const payTitle = document.createElement('span');
+        payTitle.className = 'payment-title';
+        payTitle.textContent = 'Paystack Integrated Checkout';
+        payCard.appendChild(payTitle);
+
+        const payLink = document.createElement('a');
+        payLink.href = paymentUrl;
+        payLink.className = 'btn-paystack';
+        payLink.innerHTML = 'Secure Payment Link';
+        // Open payment in new window, then prompt callback redirect back
+        payLink.target = '_self'; 
+        payCard.appendChild(payLink);
+
+        msgDiv.appendChild(payCard);
+      }
+
+      // Automatically extract number choices and display dynamic click selection buttons!
+      if (sender === 'bot' && !showPaymentBtn) {
+        const selections = extractNumberSelections(text);
+        if (selections.length > 0) {
+          const gridDiv = document.createElement('div');
+          gridDiv.className = 'select-grid';
+          
+          selections.forEach(sel => {
+            const btn = document.createElement('button');
+            btn.className = 'select-btn';
+            btn.textContent = `${sel.num} - ${sel.label}`;
+            btn.onclick = () => sendQuickMessage(sel.num);
+            gridDiv.appendChild(btn);
+          });
+          
+          msgDiv.appendChild(gridDiv);
+        }
+      }
+
+      chatMessages.appendChild(msgDiv);
+    }
+
+    // Parse Markdown-like tags (bold and lists) to safe HTML in bubbles
+    function formatMarkdown(text) {
+      // Escape HTML tags to prevent XSS
+      let escaped = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      // Replace markdown-style formatting
+      // Bold: *text* or **text**
+      escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+      escaped = escaped.replace(/\*([^*]+)\*/g, '<b>$1</b>');
+      
+      // Inline Code: `text`
+      escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+      // Bullets (line starting with - or 👉)
+      escaped = escaped.replace(/👉\s*(.*)/g, '👉 $1');
+
+      return escaped;
+    }
+
+    // Regex utility to extract number codes and short labels from message lines
+    function extractNumberSelections(text) {
+      const lines = text.split('\n');
+      const results = [];
+      
+      // RegEx to look for options like: "Select 1 to", "Select 10 for", "Select 70 to", "Select 0 to"
+      // or "1️⃣0️⃣ Select 10 for"
+      const optionRegex = /(?:Select|\*Select\*)\s*\*?(\d+)\*?\s*(?:to|for|to see|checkout)\s*(.+)/i;
+      
+      lines.forEach(line => {
+        const match = line.match(optionRegex);
+        if (match) {
+          const num = match[1];
+          let label = match[2].replace(/\*+/g, '').trim();
+          
+          // Filter duplicates or back navigations to look clean
+          if (!results.some(r => r.num === num)) {
+            results.push({ num, label });
+          }
+        }
+      });
+      
+      return results;
+    }
+
+    // JavaScript clipboard copy utility
+    async function copyText(elementId, btnElement) {
+      const textToCopy = document.getElementById(elementId).textContent;
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        const originalText = btnElement.textContent;
+        btnElement.textContent = 'Copied!';
+        btnElement.style.borderColor = 'var(--accent)';
+        btnElement.style.color = 'var(--accent)';
+        setTimeout(() => {
+          btnElement.textContent = originalText;
+          btnElement.style.borderColor = '';
+          btnElement.style.color = '';
+        }, 1500);
+      } catch (err) {
+        console.error('Failed to copy: ', err);
+      }
+    }
+  </script>
+</body>
+</html>

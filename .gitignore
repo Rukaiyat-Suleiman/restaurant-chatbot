@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Environment Variables
+.env
+.env.local
+.env.*
+
+# Local Logs
+*.log
+app.log
+
+# Drizzle kit output folder
+drizzle/
+
+# OS Files
+.DS_Store
+Thumbs.db
