@@ -4,10 +4,11 @@ import { db, pool } from "./index.js";
 async function runMigrations() {
   console.log("Running Drizzle migrations...");
   try {
-    // Explicitly configure migrationsTable to use the public schema instead of creating a "drizzle" schema
+    // Explicitly configure migrationsSchema to 'public' to completely avoid CREATE SCHEMA statements
     await migrate(db, { 
       migrationsFolder: "./drizzle",
-      migrationsTable: "drizzle_migrations" 
+      migrationsTable: "drizzle_migrations",
+      migrationsSchema: "public" 
     });
     console.log("Migrations applied successfully!");
   } catch (err) {
