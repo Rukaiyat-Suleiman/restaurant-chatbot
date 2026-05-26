@@ -1,6 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
-import { db } from "../db/index.js";
-import { sessions, orders, orderItems, users } from "../db/schema.js";
+import { Session, Order, OrderItem, User } from "../db/index.js";
 import { getMenuItemByNumber, getOptionByNumber, MENU } from "./menu.js";
 import { initializePayment } from "./paystack.js";
 
@@ -23,39 +21,32 @@ export async function handleBotMessage(session, userMessage, reqHost) {
   
   // Helper to fetch the current pending order
   async function getPendingOrder() {
-    let orderList;
+    let order;
     if (session.userId) {
-      orderList = await db
-        .select()
-        .from(orders)
-        .where(and(eq(orders.userId, session.userId), eq(orders.status, "pending")))
-        .orderBy(desc(orders.id))
-        .limit(1);
+      order = await Order.findOne({
+        where: { userId: session.userId, status: "pending" },
+        order: [["id", "DESC"]]
+      });
     } else {
-      orderList = await db
-        .select()
-        .from(orders)
-        .where(and(eq(orders.sessionId, session.id), eq(orders.status, "pending")))
-        .orderBy(desc(orders.id))
-        .limit(1);
+      order = await Order.findOne({
+        where: { sessionId: session.id, status: "pending" },
+        order: [["id", "DESC"]]
+      });
     }
-    return orderList[0] || null;
+    return order ? order.get({ plain: true }) : null;
   }
 
   // Helper to get or create a pending order
   async function getOrCreatePendingOrder() {
     let order = await getPendingOrder();
     if (!order) {
-      const [newOrder] = await db
-        .insert(orders)
-        .values({
-          sessionId: session.id,
-          userId: session.userId || null,
-          status: "pending",
-          totalPrice: 0,
-        })
-        .returning();
-      order = newOrder;
+      const newOrder = await Order.create({
+        sessionId: session.id,
+        userId: session.userId || null,
+        status: "pending",
+        totalPrice: 0,
+      });
+      order = newOrder.get({ plain: true });
     }
     return order;
   }
@@ -64,7 +55,7 @@ export async function handleBotMessage(session, userMessage, reqHost) {
   if (state === "welcome" || state === "menu" || state === "checkout") {
     if (input === "1") {
       // Show menu
-      await db.update(sessions).set({ botState: "menu" }).where(eq(sessions.id, session.id));
+      await Session.update({ botState: "menu" }, { where: { id: session.id } });
       return {
         text: `*Ruki Restaurant Menu*
 Select a number to view details and add to your order:
@@ -86,7 +77,7 @@ Or type *0* to return to the Main Menu.`,
         return { text: `*Current Order*\nYour order is currently empty.\n\nSelect *1* to Place an order.` };
       }
 
-      const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+      const items = await OrderItem.findAll({ where: { orderId: order.id } });
       if (items.length === 0) {
         return { text: `*Current Order*\nYour order is currently empty.\n\nSelect *1* to Place an order.` };
       }
@@ -104,17 +95,15 @@ Or type *0* to return to the Main Menu.`,
       // See order history
       let pastOrders;
       if (session.userId) {
-        pastOrders = await db
-          .select()
-          .from(orders)
-          .where(and(eq(orders.userId, session.userId), eq(orders.status, "paid")))
-          .orderBy(desc(orders.id));
+        pastOrders = await Order.findAll({
+          where: { userId: session.userId, status: "paid" },
+          order: [["id", "DESC"]]
+        });
       } else {
-        pastOrders = await db
-          .select()
-          .from(orders)
-          .where(and(eq(orders.sessionId, session.id), eq(orders.status, "paid")))
-          .orderBy(desc(orders.id));
+        pastOrders = await Order.findAll({
+          where: { sessionId: session.id, status: "paid" },
+          order: [["id", "DESC"]]
+        });
       }
 
       if (pastOrders.length === 0) {
@@ -123,7 +112,7 @@ Or type *0* to return to the Main Menu.`,
 
       let history = `*Your Order History*\n\n`;
       for (const order of pastOrders) {
-        const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+        const items = await OrderItem.findAll({ where: { orderId: order.id } });
         const itemNames = items.map(i => `${i.itemName}${i.options ? ` (${i.options})` : ""}`).join(", ");
         const dateStr = new Date(order.createdAt).toLocaleDateString();
         const schedStr = order.scheduledFor ? ` Scheduled: ${new Date(order.scheduledFor).toLocaleTimeString()}` : "";
@@ -140,13 +129,13 @@ Or type *0* to return to the Main Menu.`,
         return { text: `*Checkout Failed*\nNo order to place.\n\nSelect *1* to Place an order!` };
       }
 
-      const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+      const items = await OrderItem.findAll({ where: { orderId: order.id } });
       if (items.length === 0) {
         return { text: `*Checkout Failed*\nNo order to place.\n\nSelect *1* to Place an order!` };
       }
 
       // Transition to checkout scheduling selection
-      await db.update(sessions).set({ botState: "checkout" }).where(eq(sessions.id, session.id));
+      await Session.update({ botState: "checkout" }, { where: { id: session.id } });
       return {
         text: `*Order Checkout - Total: ${formatMoney(order.totalPrice)}*
 Would you like to schedule this order or order it immediately?
@@ -164,13 +153,13 @@ Select *74* to cancel checkout and return`,
       // Cancel order
       const order = await getPendingOrder();
       if (!order) {
-        await db.update(sessions).set({ botState: "welcome" }).where(eq(sessions.id, session.id));
+        await Session.update({ botState: "welcome" }, { where: { id: session.id } });
         return { text: `*Cancel Order*\nYou don't have any active order.\n\n${WELCOME_TEXT}` };
       }
 
       // Update status to cancelled
-      await db.update(orders).set({ status: "cancelled" }).where(eq(orders.id, order.id));
-      await db.update(sessions).set({ botState: "welcome" }).where(eq(sessions.id, session.id));
+      await Order.update({ status: "cancelled" }, { where: { id: order.id } });
+      await Session.update({ botState: "welcome" }, { where: { id: session.id } });
       return { text: `*Order Cancelled*\nYour active order has been cancelled successfully.\n\n${WELCOME_TEXT}` };
     }
   }
@@ -187,10 +176,10 @@ Please select a valid menu number (10 - 14) or select *0* to return to main opti
     }
 
     // Transition to item options
-    await db
-      .update(sessions)
-      .set({ botState: "item_options", currentItemId: item.id })
-      .where(eq(sessions.id, session.id));
+    await Session.update(
+      { botState: "item_options", currentItemId: item.id },
+      { where: { id: session.id } }
+    );
 
     let optionsText = `*${item.name} (${formatMoney(item.price)})*
 Customize your item by selecting an option number:
@@ -208,14 +197,14 @@ Customize your item by selecting an option number:
   if (state === "item_options") {
     const currentItem = getMenuItemByNumber(session.currentItemId);
     if (!currentItem) {
-      await db.update(sessions).set({ botState: "welcome", currentItemId: null }).where(eq(sessions.id, session.id));
+      await Session.update({ botState: "welcome", currentItemId: null }, { where: { id: session.id } });
       return { text: `An error occurred. Returning to the main menu.\n\n${WELCOME_TEXT}` };
     }
 
     const optNum = parseInt(input, 10);
     if (optNum === currentItem.backOption) {
       // Go back to menu state
-      await db.update(sessions).set({ botState: "menu", currentItemId: null }).where(eq(sessions.id, session.id));
+      await Session.update({ botState: "menu", currentItemId: null }, { where: { id: session.id } });
       return {
         text: `*Ruki Restaurant Menu*
 Select a number to view details and add to your order:
@@ -247,7 +236,7 @@ Please select one of the listed numbers:
     const order = await getOrCreatePendingOrder();
     const finalPrice = currentItem.price + selectedOption.price;
 
-    await db.insert(orderItems).values({
+    await OrderItem.create({
       orderId: order.id,
       itemName: currentItem.name,
       quantity: 1,
@@ -256,13 +245,13 @@ Please select one of the listed numbers:
     });
 
     // Update total price of the order
-    await db
-      .update(orders)
-      .set({ totalPrice: order.totalPrice + finalPrice })
-      .where(eq(orders.id, order.id));
+    await Order.update(
+      { totalPrice: order.totalPrice + finalPrice },
+      { where: { id: order.id } }
+    );
 
     // Reset bot state to welcome
-    await db.update(sessions).set({ botState: "welcome", currentItemId: null }).where(eq(sessions.id, session.id));
+    await Session.update({ botState: "welcome", currentItemId: null }, { where: { id: session.id } });
 
     return {
       text: `Added **1x ${currentItem.name}**${selectedOption.name !== "Plain" ? ` with ${selectedOption.name}` : ""} to your order!
@@ -276,14 +265,14 @@ Select *99* to checkout and place your order`,
   if (state === "checkout") {
     if (input === "74") {
       // Go back
-      await db.update(sessions).set({ botState: "welcome" }).where(eq(sessions.id, session.id));
+      await Session.update({ botState: "welcome" }, { where: { id: session.id } });
       return { text: `Returning to Main Menu.\n\n${WELCOME_TEXT}` };
     }
 
     if (["70", "71", "72", "73"].includes(input)) {
       const order = await getPendingOrder();
       if (!order) {
-        await db.update(sessions).set({ botState: "welcome" }).where(eq(sessions.id, session.id));
+        await Session.update({ botState: "welcome" }, { where: { id: session.id } });
         return { text: `Your order was empty. Returning to Main Menu.\n\n${WELCOME_TEXT}` };
       }
 
@@ -302,13 +291,15 @@ Select *99* to checkout and place your order`,
 
       // If scheduled, update order
       if (scheduledFor) {
-        await db.update(orders).set({ scheduledFor }).where(eq(orders.id, order.id));
+        await Order.update({ scheduledFor }, { where: { id: order.id } });
       }
 
       // Initialize Paystack payment
-      const userEmail = session.userId
-        ? (await db.select().from(users).where(eq(users.id, session.userId)))[0]?.email
-        : `guest_${session.id}@ruki-chatbot.com`;
+      let userEmail = `guest_${session.id}@ruki-chatbot.com`;
+      if (session.userId) {
+        const user = await User.findByPk(session.userId);
+        if (user) userEmail = user.email;
+      }
 
       const callbackUrl = `http://${reqHost}/payment-callback`;
       
@@ -316,13 +307,10 @@ Select *99* to checkout and place your order`,
         const paystackData = await initializePayment(userEmail, order.totalPrice, callbackUrl);
         
         // Save the reference on the order
-        await db
-          .update(orders)
-          .set({ paymentReference: paystackData.reference })
-          .where(eq(orders.id, order.id));
+        await Order.update({ paymentReference: paystackData.reference }, { where: { id: order.id } });
 
         // Reset state so after payment callback they start fresh
-        await db.update(sessions).set({ botState: "welcome" }).where(eq(sessions.id, session.id));
+        await Session.update({ botState: "welcome" }, { where: { id: session.id } });
 
         return {
           text: `*Complete Your Payment*
@@ -354,6 +342,6 @@ Select *74* to return`,
   }
 
   // Catch-all
-  await db.update(sessions).set({ botState: "welcome" }).where(eq(sessions.id, session.id));
+  await Session.update({ botState: "welcome" }, { where: { id: session.id } });
   return { text: WELCOME_TEXT };
 }

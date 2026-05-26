@@ -1,7 +1,5 @@
 import crypto from "crypto";
-import { eq } from "drizzle-orm";
-import { db } from "../db/index.js";
-import { sessions } from "../db/schema.js";
+import { Session } from "../db/index.js";
 
 function parseCookies(cookieHeader) {
   const list = {};
@@ -20,27 +18,24 @@ export async function sessionMiddleware(req, res, next) {
   let sessionRecord = null;
 
   if (sessionId) {
-    // Try to load from database
-    const results = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
-    if (results.length > 0) {
-      sessionRecord = results[0];
+    // Try to load session from PostgreSQL using Sequelize
+    const session = await Session.findByPk(sessionId);
+    if (session) {
+      sessionRecord = session.get({ plain: true });
     }
   }
 
   if (!sessionRecord) {
-    // Generate new session
+    // Generate new UUID session token
     sessionId = crypto.randomUUID();
-    const [newSession] = await db
-      .insert(sessions)
-      .values({
-        id: sessionId,
-        botState: "welcome",
-      })
-      .returning();
+    const session = await Session.create({
+      id: sessionId,
+      botState: "welcome",
+    });
     
-    sessionRecord = newSession;
+    sessionRecord = session.get({ plain: true });
 
-    // Set cookie
+    // Set cookie in browser
     res.setHeader(
       "Set-Cookie",
       `session_id=${sessionId}; Path=/; HttpOnly; Max-Age=31536000; SameSite=Lax`

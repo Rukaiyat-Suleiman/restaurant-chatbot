@@ -1,8 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
-import { eq, and, desc } from "drizzle-orm";
-import { db } from "../db/index.js";
-import { users, sessions, orders, orderItems } from "../db/schema.js";
+import { User, Session, Order } from "../db/index.js";
 import { sessionMiddleware } from "../middleware/session.js";
 import { loginSchema, signupSchema } from "../validators/auth.validator.js";
 import { chatMessageSchema } from "../validators/chat.validator.js";
@@ -18,9 +16,9 @@ router.use(sessionMiddleware);
 router.get("/", async (req, res) => {
   let loggedInUser = null;
   if (req.session.userId) {
-    const results = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
-    if (results.length > 0) {
-      loggedInUser = results[0];
+    const user = await User.findByPk(req.session.userId);
+    if (user) {
+      loggedInUser = user.get({ plain: true });
     }
   }
 
@@ -53,6 +51,7 @@ router.post("/api/chat", async (req, res) => {
       paymentUrl: reply.paymentUrl || null,
     });
   } catch (err) {
+    console.error("Chatbot API Error:", err.message);
     return res.status(500).json({
       success: false,
       message: "Chatbot encountered an internal error. Please try again.",
@@ -62,7 +61,6 @@ router.post("/api/chat", async (req, res) => {
 
 // --- Auth: Signup ---
 router.get("/signup", (req, res) => {
-  // If already logged in, redirect to chat
   if (req.session.userId) {
     return res.redirect("/");
   }
@@ -81,8 +79,8 @@ router.post("/signup", async (req, res) => {
 
   try {
     // Check if email already registered
-    const existing = await db.select().from(users).where(eq(users.email, value.email)).limit(1);
-    if (existing.length > 0) {
+    const existing = await User.findOne({ where: { email: value.email } });
+    if (existing) {
       return res.render("signup", {
         errors: { email: "Email is already registered." },
         values: req.body,
@@ -93,19 +91,16 @@ router.post("/signup", async (req, res) => {
     const hashedPassword = await bcrypt.hash(value.password, 10);
 
     // Insert user
-    const [newUser] = await db
-      .insert(users)
-      .values({
-        email: value.email,
-        password: hashedPassword,
-      })
-      .returning();
+    const newUser = await User.create({
+      email: value.email,
+      password: hashedPassword,
+    });
 
     // Link device session to this user!
-    await db
-      .update(sessions)
-      .set({ userId: newUser.id })
-      .where(eq(sessions.id, req.session.id));
+    await Session.update(
+      { userId: newUser.id },
+      { where: { id: req.session.id } }
+    );
 
     return res.redirect("/?signup=success");
   } catch (err) {
@@ -135,15 +130,14 @@ router.post("/login", async (req, res) => {
   }
 
   try {
-    const results = await db.select().from(users).where(eq(users.email, value.email)).limit(1);
-    if (results.length === 0) {
+    const user = await User.findOne({ where: { email: value.email } });
+    if (!user) {
       return res.render("login", {
         errors: { email: "Invalid email or password." },
         values: req.body,
       });
     }
 
-    const user = results[0];
     const passwordMatch = await bcrypt.compare(value.password, user.password);
     if (!passwordMatch) {
       return res.render("login", {
@@ -153,10 +147,10 @@ router.post("/login", async (req, res) => {
     }
 
     // Link device session to this user!
-    await db
-      .update(sessions)
-      .set({ userId: user.id })
-      .where(eq(sessions.id, req.session.id));
+    await Session.update(
+      { userId: user.id },
+      { where: { id: req.session.id } }
+    );
 
     return res.redirect("/");
   } catch (err) {
@@ -171,10 +165,10 @@ router.post("/login", async (req, res) => {
 router.get("/logout", async (req, res) => {
   if (req.session.id) {
     // Unlink user from device session
-    await db
-      .update(sessions)
-      .set({ userId: null })
-      .where(eq(sessions.id, req.session.id));
+    await Session.update(
+      { userId: null },
+      { where: { id: req.session.id } }
+    );
   }
   res.redirect("/");
 });
@@ -191,20 +185,14 @@ router.get("/payment-callback", async (req, res) => {
 
     if (paymentData.status === "success") {
       // Find the corresponding order by reference
-      const results = await db
-        .select()
-        .from(orders)
-        .where(eq(orders.paymentReference, reference))
-        .limit(1);
+      const order = await Order.findOne({ where: { paymentReference: reference } });
 
-      if (results.length > 0) {
-        const order = results[0];
-        
+      if (order) {
         // Update status to paid
-        await db
-          .update(orders)
-          .set({ status: "paid" })
-          .where(eq(orders.id, order.id));
+        await Order.update(
+          { status: "paid" },
+          { where: { id: order.id } }
+        );
         
         return res.redirect(`/?payment=success&ref=${reference}`);
       } else {

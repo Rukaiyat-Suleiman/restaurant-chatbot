@@ -3,7 +3,7 @@ import "dotenv/config";
 import morgan from "morgan";
 import { logger } from "./utils/logger.config.js";
 import router from "./routes/mainRoute.js";
-import { pool } from "./db/index.js";
+import { sequelize } from "./db/index.js";
 
 const PORT = process.env.PORT || 2000;
 
@@ -28,7 +28,7 @@ app.use("/", router);
 
 // Test DB connection on startup
 if (!process.env.JEST_WORKER_ID) {
-  pool.query("SELECT 1")
+  sequelize.authenticate()
     .then(() => {
       logger.info("Database connection test successful on startup.");
     })

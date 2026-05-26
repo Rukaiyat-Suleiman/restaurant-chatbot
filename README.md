@@ -38,28 +38,22 @@ DATABASE_URL=postgresql://your_db_user:your_db_password@localhost:5432/your_db_n
 ```
 
 ### 4. Setup & Sync the Database
+We have added convenient database scripts inside `package.json` to manage your tables:
 
-* **Generate Migration Files**: Compiles Drizzle JS schemas into versioned SQL files:
-  ```bash
-  npm run db:generate
-  ```
-* **Run Programmatic Migrations**: Executes pending SQL migrations directly on your PostgreSQL database:
+* **Synchronize Database**: Connects to your PostgreSQL database and automatically syncs the tables (creates them if missing, alters them if columns change) flatly inside your `public` schema without any schema-creation restrictions:
   ```bash
   npm run db:migrate
-  ```
-* **Wipe Database Tables**: Cascade drops all chatbot tables in the database to allow a fresh migration sync:
-  ```bash
-  npm run db:drop
-  ```
-* **Push Schema Directly**: Prototyping shortcut to push schema modifications without making files:
-  ```bash
-  npm run db:push
   ```
 * **Seed Test Data**: Seeds a persistent administrator test account:
   ```bash
   npm run db:seed
   ```
   *(Seeded credentials: **`admin@example.com`** / **`admin123`**)*
+
+* **Wipe Database Tables**: Cascading drops all chatbot tables to start fresh:
+  ```bash
+  npm run db:drop
+  ```
 
 ---
 

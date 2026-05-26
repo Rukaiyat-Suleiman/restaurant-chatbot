@@ -1,20 +1,14 @@
 import bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
-import { db, pool } from "./index.js";
-import { users } from "./schema.js";
+import { User, sequelize } from "./index.js";
 
 async function seed() {
   console.log("Seeding database with default records...");
   try {
-    const existingAdmin = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, "admin@example.com"))
-      .limit(1);
+    const existingAdmin = await User.findOne({ where: { email: "admin@example.com" } });
 
-    if (existingAdmin.length === 0) {
+    if (!existingAdmin) {
       const hashedPassword = await bcrypt.hash("admin123", 10);
-      await db.insert(users).values({
+      await User.create({
         email: "admin@example.com",
         password: hashedPassword,
       });
@@ -25,7 +19,7 @@ async function seed() {
   } catch (err) {
     console.error("Seeding failed:", err.message);
   } finally {
-    await pool.end();
+    await sequelize.close();
   }
 }
 

@@ -1,19 +1,20 @@
 import request from 'supertest';
 import app from './app.js';
-import { pool } from './db/index.js';
+import { sequelize } from './db/index.js';
 
 afterAll(async () => {
-  // Close the database pool so Jest doesn't hang
-  await pool.end();
+  // Close the database connection so Jest doesn't hang
+  await sequelize.close();
 });
 
 describe('Express ChatBot Routes', () => {
   
   describe('Database Connection', () => {
     it('should successfully test connection using SELECT 1', async () => {
-      const res = await pool.query('SELECT 1');
-      expect(res.rows).toBeDefined();
-      expect(res.rows.length).toBe(1);
+      // In Sequelize, query runs raw SQL
+      const [rows] = await sequelize.query('SELECT 1');
+      expect(rows).toBeDefined();
+      expect(rows.length).toBe(1);
     });
   });
   
