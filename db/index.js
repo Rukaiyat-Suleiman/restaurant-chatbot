@@ -3,6 +3,10 @@ import "dotenv/config";
 
 const connectionString = process.env.DATABASE_URL || "postgresql://postgres:1234@localhost:5432/postgres";
 
+// Safe connection logging (masks password to prevent credential exposure in logs)
+const maskedUrl = connectionString.replace(/:([^:@]+)@/, ":****@");
+console.log(`[Database] Initializing connection to: ${maskedUrl}`);
+
 const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
 
 // Initialize Sequelize
