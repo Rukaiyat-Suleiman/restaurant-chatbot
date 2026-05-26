@@ -1,9 +1,8 @@
 {
-  "name": "ken-express-server",
+  "name": "chatbot-ruki",
   "version": "1.0.0",
-  "description": "Express server",
-  "license": "GPL-3.0-only",
-  "author": "K3n",
+  "description": "An AI Chatbot",
+  "author": "Rukia",
   "type": "module",
   "main": "app.js",
   "scripts": {
