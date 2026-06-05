@@ -28,21 +28,27 @@ app.use("/", router);
 
 // Test DB connection on startup
 if (!process.env.JEST_WORKER_ID) {
-  sequelize.authenticate()
-    .then(() => {
-      logger.info("Database connection test successful on startup.");
-    })
-    .catch((err) => {
-      logger.error(`Database connection test failed on startup: ${err.message}`);
-    });
+  try {
+    sequelize.authenticate()
+      .then(() => {
+        logger.info("Database connection test successful on startup.");
+      })
+      .catch((err) => {
+        throw new Error(`Database connection test failed on startup: ${err}`);
+      }).then(() => {
+        app.listen(PORT, () => {
+          try {
+            logger.info(`Listening on http://localhost:${PORT}`);
+          } catch (err) {
+            throw new Error(`Server failed to startup: \n${err}`);
+          }
+        });
+      })
 
-  app.listen(PORT, () => {
-    try {
-      logger.info(`Listening on http://localhost:${PORT}`);
-    } catch (err) {
-      logger.info(`Server failed to startup: \n${err}`);
-    }
-  });
+
+  } catch (err) {
+    logger.error("An error occurred: \n", err)
+  }
 }
 
 export default app;
